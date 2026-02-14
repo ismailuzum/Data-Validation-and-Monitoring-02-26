@@ -6,20 +6,14 @@
 // and sends Slack notifications on validation results.
 //
 // Prerequisites:
-//   - Docker installed on Jenkins agent (or Docker Pipeline plugin)
+//   - Python 3 installed on the Jenkins agent
 //   - Jenkins Credential 'slack-webhook-url' (Secret Text) configured
 //     Go to: Manage Jenkins → Credentials → Add → Secret Text
 // ============================================================================
 
 pipeline {
-    // Use a Python 3.11 Docker image as the build environment.
-    // This ensures Python is always available, regardless of the Jenkins host.
-    agent {
-        docker {
-            image 'python:3.11-slim'
-            args '--user root'         // Required for pip install permissions
-        }
-    }
+    // Run on any available Jenkins agent that has Python installed.
+    agent any
 
     // ── Triggers ────────────────────────────────────────────────────────
     // Poll SCM every 15 minutes for new commits + daily scheduled run at 08:00
@@ -39,13 +33,12 @@ pipeline {
     stages {
 
         // Stage 1: Install all Python dependencies from requirements.txt.
-        // No need for venv inside Docker — the container IS the isolated env.
         stage('Setup') {
             steps {
                 sh '''
-                    python --version
-                    pip install --upgrade pip
-                    pip install -r requirements.txt
+                    python3 --version
+                    pip3 install --upgrade pip
+                    pip3 install -r requirements.txt
                 '''
             }
         }
@@ -55,7 +48,7 @@ pipeline {
         stage('Lint') {
             steps {
                 sh '''
-                    pip install ruff
+                    pip3 install ruff
                     ruff check src/ dq_pipeline.py || true
                 '''
             }
@@ -66,7 +59,7 @@ pipeline {
         // Output is saved to validation_output.txt for archiving.
         stage('Data Quality Validation') {
             steps {
-                sh 'python dq_pipeline.py 2>&1 | tee validation_output.txt'
+                sh 'python3 dq_pipeline.py 2>&1 | tee validation_output.txt'
             }
         }
     }
