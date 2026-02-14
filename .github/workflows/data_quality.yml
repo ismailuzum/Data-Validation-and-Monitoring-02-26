@@ -18,7 +18,7 @@ on:
 
   # Scheduled run: every day at 08:00 UTC (automatic daily data quality check)
   schedule:
-    - cron: "0 8 * * *"
+    - cron: "0 8 * * *"  # 08:00 UTC
 
 jobs:
   data-quality:
