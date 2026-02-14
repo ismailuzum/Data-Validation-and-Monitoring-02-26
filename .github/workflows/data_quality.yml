@@ -1,31 +1,115 @@
+# ============================================================================
+# Data Quality Pipeline — GitHub Actions Workflow
+# ============================================================================
+# This workflow validates the Amazon Sales dataset using Great Expectations
+# and Pydantic, sends Slack notifications, and uploads validation reports.
+# ============================================================================
+
 name: Data Quality Pipeline
 
+# ── Triggers ─────────────────────────────────────────────────────────────────
+# Runs on push/PR to main, on a daily schedule, or manually via GitHub UI.
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
-  workflow_dispatch:        # Manuel tetikleme
+  workflow_dispatch:                    # Manual trigger from GitHub UI
+
+  # Scheduled run: every day at 08:00 UTC (automatic daily data quality check)
+  schedule:
+    - cron: "0 8 * * *"
 
 jobs:
   data-quality:
     runs-on: ubuntu-latest
 
     steps:
+      # ── 1. Checkout ──────────────────────────────────────────────────────
+      # Clone the repository so the workflow has access to all project files.
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # ── 2. Python Setup ──────────────────────────────────────────────────
+      # Install Python 3.11 to match the project's target version.
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
+      # ── 3. Dependency Caching ────────────────────────────────────────────
+      # Cache pip packages between runs to speed up dependency installation.
+      # The cache is invalidated when requirements.txt changes.
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      # ── 4. Install Dependencies ──────────────────────────────────────────
+      # Upgrade pip and install all project dependencies from requirements.txt.
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      # ── 5. Lint Check ───────────────────────────────────────────────────
+      # Run Ruff linter to catch code quality issues before validation.
+      # Uses --exit-zero so linting warnings don't block the pipeline.
+      - name: Lint with Ruff
+        run: |
+          pip install ruff
+          ruff check src/ dq_pipeline.py --output-format=github || true
+
+      # ── 6. Run Data Quality Pipeline ─────────────────────────────────────
+      # Execute the main validation pipeline (GE + Pydantic + Slack).
+      # SLACK_WEBHOOK_URL is read from GitHub Secrets.
+      # continue-on-error: true → ensures subsequent steps run even if
+      # validation fails, so we can still upload reports and post summaries.
       - name: Run Data Quality Pipeline
+        id: pipeline
+        continue-on-error: true
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-        run: python dq_pipeline.py
+        run: python dq_pipeline.py 2>&1 | tee validation_output.txt
+
+      # ── 7. Upload Validation Report ──────────────────────────────────────
+      # Save the pipeline output as a downloadable artifact in GitHub Actions.
+      # Available for 30 days under the "Artifacts" section of the workflow run.
+      - name: Upload validation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-report
+          path: validation_output.txt
+          retention-days: 30
+
+      # ── 8. Job Summary ──────────────────────────────────────────────────
+      # Write the validation results to the GitHub Actions Job Summary.
+      # This makes the output visible directly in the PR / commit checks UI
+      # without needing to open the full log.
+      - name: Write Job Summary
+        if: always()
+        run: |
+          echo "## 📊 Data Quality Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          tail -20 validation_output.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ steps.pipeline.outcome }}" == "success" ]; then
+            echo "✅ **All validations passed!**" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Validation issues found.** Check the full report above." >> $GITHUB_STEP_SUMMARY
+          fi
+
+      # ── 9. Fail if Pipeline Failed ──────────────────────────────────────
+      # After uploading reports and posting summaries, actually fail the job
+      # if the pipeline detected issues. This blocks PR merges if needed.
+      - name: Check pipeline result
+        if: steps.pipeline.outcome == 'failure'
+        run: |
+          echo "Pipeline reported validation failures."
+          exit 1
