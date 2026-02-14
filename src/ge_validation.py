@@ -23,14 +23,18 @@ from datetime import datetime
 
 VALID_STATUSES = [
     "Cancelled",
-    "Shipped",
-    "Shipped - Delivered to Buyer",
     "Pending",
-    "Shipped - Returned to Seller",
-    "Shipped - Rejected by Buyer",
-    "Shipped - Returning to Seller",
+    "Pending - Waiting for Pick Up",
+    "Shipped",
+    "Shipped - Damaged",
+    "Shipped - Delivered to Buyer",
+    "Shipped - Lost in Transit",
     "Shipped - Out for Delivery",
     "Shipped - Picked Up",
+    "Shipped - Rejected by Buyer",
+    "Shipped - Returned to Seller",
+    "Shipped - Returning to Seller",
+    "Shipping",
 ]
 
 VALID_FULFILMENT = ["Merchant", "Amazon"]
@@ -68,12 +72,9 @@ def run_ge_validation(df: pd.DataFrame) -> dict:
     # ── Expectation Suite ────────────────────────────────────────────────
     suite = gx.ExpectationSuite(name="amazon_sales_suite")
 
-    # 1. Order ID: must not be null & must be unique
+    # 1. Order ID: must not be null (not unique — multi-item orders share the same ID)
     suite.add_expectation(
         gx.expectations.ExpectColumnValuesToNotBeNull(column="Order ID")
-    )
-    suite.add_expectation(
-        gx.expectations.ExpectColumnValuesToBeUnique(column="Order ID")
     )
 
     # 2. Qty >= 0 (no negative quantities)

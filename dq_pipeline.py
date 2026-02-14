@@ -14,10 +14,14 @@ import os
 import sys
 
 import pandas as pd
+from dotenv import load_dotenv
 
 from src.ge_validation import run_ge_validation
 from src.pydantic_validation import run_pydantic_validation
 from src.slack_notifier import send_slack_notification
+
+# ── Load .env file ───────────────────────────────────────────────────────────
+load_dotenv()
 
 # ── Settings ─────────────────────────────────────────────────────────────────
 
@@ -34,7 +38,7 @@ def main() -> None:
 
     # 1️⃣  Load data
     print(f"\n📂 Loading data from: {CSV_PATH}")
-    df = pd.read_csv(CSV_PATH)
+    df = pd.read_csv(CSV_PATH, low_memory=False)
     print(f"   Rows: {len(df):,}  |  Columns: {len(df.columns)}")
 
     # 2️⃣  Great Expectations Validation

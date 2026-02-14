@@ -28,14 +28,18 @@ from pydantic import BaseModel, field_validator, ValidationError
 
 VALID_STATUSES = [
     "Cancelled",
-    "Shipped",
-    "Shipped - Delivered to Buyer",
     "Pending",
-    "Shipped - Returned to Seller",
-    "Shipped - Rejected by Buyer",
-    "Shipped - Returning to Seller",
+    "Pending - Waiting for Pick Up",
+    "Shipped",
+    "Shipped - Damaged",
+    "Shipped - Delivered to Buyer",
+    "Shipped - Lost in Transit",
     "Shipped - Out for Delivery",
     "Shipped - Picked Up",
+    "Shipped - Rejected by Buyer",
+    "Shipped - Returned to Seller",
+    "Shipped - Returning to Seller",
+    "Shipping",
 ]
 
 VALID_FULFILMENT = ["Merchant", "Amazon"]

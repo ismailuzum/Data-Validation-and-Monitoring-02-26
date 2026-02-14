@@ -1,4 +1,5 @@
 great_expectations
 pandas
 pydantic
+python-dotenv
 requests
