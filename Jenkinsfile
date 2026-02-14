@@ -20,11 +20,7 @@
 pipeline {
 
     // Run on any available Jenkins agent that has Python installed.
-    agent {
-        docker {
-            image 'python:3.11-slim'
-        }
-    }
+    agent any
 
     // ── Pipeline Options ────────────────────────────────────────────────────
     // timeout: prevents hanging builds
