@@ -1,9 +1,15 @@
 // ============================================================================
-// Data Quality Pipeline — Jenkinsfile
+// Data Quality Pipeline — Jenkinsfile (Production-Ready Version)
 // ============================================================================
 // Declarative Pipeline syntax for Jenkins.
-// Validates the Amazon Sales dataset using Great Expectations + Pydantic
-// and sends Slack notifications on validation results.
+// Validates the Amazon Sales dataset using Great Expectations + Pydantic,
+// archives validation results, and sends Slack notifications.
+//
+// Improvements in this version:
+//   - Uses isolated Python virtual environment (venv)
+//   - Ensures reproducible builds
+//   - Prevents dependency conflicts between Jenkins jobs
+//   - Adds pipeline safety options (timeout, timestamps)
 //
 // Prerequisites:
 //   - Python 3 installed on the Jenkins agent
@@ -12,80 +18,133 @@
 // ============================================================================
 
 pipeline {
+
     // Run on any available Jenkins agent that has Python installed.
     agent any
 
-    // ── Triggers ────────────────────────────────────────────────────────
-    // Poll SCM every 15 minutes for new commits + daily scheduled run at 08:00
-    triggers {
-        pollSCM('H/15 * * * *')        // Check Git repo for changes every 15 min
-        cron('0 8 * * *')              // Daily run at 08:00 (automatic quality check)
+    // ── Pipeline Options ────────────────────────────────────────────────────
+    // timeout: prevents hanging builds
+    // timestamps: adds timestamps to logs (useful for debugging & monitoring)
+    options {
+        timeout(time: 20, unit: 'MINUTES')
+        timestamps()
     }
 
-    // ── Environment Variables ───────────────────────────────────────────
-    // SLACK_WEBHOOK_URL is stored securely in Jenkins Credentials.
-    // Jenkins injects it as an environment variable at runtime.
+    // ── Triggers ────────────────────────────────────────────────────────────
+    // pollSCM: detects new commits
+    // cron: scheduled daily validation for continuous monitoring
+    triggers {
+        pollSCM('H/15 * * * *')        // Check Git repo every 15 minutes
+        cron('0 8 * * *')              // Run daily at 08:00
+    }
+
+    // ── Environment Variables ───────────────────────────────────────────────
+    // SLACK_WEBHOOK_URL is securely injected from Jenkins credentials
+    // VENV defines the virtual environment directory
     environment {
         SLACK_WEBHOOK_URL = credentials('slack-webhook-url')
+        VENV = 'venv'
     }
 
-    // ── Pipeline Stages ─────────────────────────────────────────────────
+    // ── Pipeline Stages ─────────────────────────────────────────────────────
     stages {
 
-        // Stage 1: Install all Python dependencies from requirements.txt.
-        stage('Setup') {
+        // Stage 1: Setup isolated Python environment
+        // Creates virtual environment and installs dependencies.
+        stage('Setup Environment') {
             steps {
                 sh '''
+                    echo "Starting environment setup..."
+
                     python3 --version
-                    pip3 install --upgrade pip
-                    pip3 install -r requirements.txt
+
+                    # Create isolated virtual environment
+                    python3 -m venv $VENV
+
+                    # Activate virtual environment
+                    . $VENV/bin/activate
+
+                    # Upgrade pip and install dependencies
+                    pip install --upgrade pip
+                    pip install -r requirements.txt
+
+                    echo "Environment setup completed."
                 '''
             }
         }
 
-        // Stage 2: Run Ruff linter to catch code quality issues early.
-        // Errors are logged but do not block the pipeline (|| true).
-        stage('Lint') {
+        // Stage 2: Run Ruff linter for static code analysis.
+        // Does not fail pipeline (non-blocking quality check).
+        stage('Lint Code') {
             steps {
                 sh '''
-                    pip3 install ruff
+                    echo "Running code linting..."
+
+                    . $VENV/bin/activate
+
+                    pip install ruff
+
+                    # Run linter (non-blocking)
                     ruff check src/ dq_pipeline.py || true
+
+                    echo "Linting completed."
                 '''
             }
         }
 
-        // Stage 3: Execute the main data quality pipeline.
-        // Runs GE validation → Pydantic validation → Slack notification.
-        // Output is saved to validation_output.txt for archiving.
+        // Stage 3: Execute data quality validation pipeline.
+        // Runs Great Expectations and Pydantic validation logic.
+        // Output is saved for auditing and debugging.
         stage('Data Quality Validation') {
             steps {
-                sh 'python3 dq_pipeline.py 2>&1 | tee validation_output.txt'
+                sh '''
+                    echo "Running data quality validation..."
+
+                    . $VENV/bin/activate
+
+                    python dq_pipeline.py \
+                    2>&1 | tee validation_output.txt
+
+                    echo "Validation stage completed."
+                '''
             }
         }
     }
 
-    // ── Post Actions ────────────────────────────────────────────────────
-    // These run AFTER all stages complete, regardless of success or failure.
+    // ── Post Actions ────────────────────────────────────────────────────────
+    // These run regardless of pipeline success or failure.
     post {
-        // Always archive the validation report so it can be downloaded
-        // from the Jenkins build page (similar to GitHub Artifacts).
+
+        // Always archive validation results for auditing and download.
         always {
             archiveArtifacts artifacts: 'validation_output.txt',
                              allowEmptyArchive: true,
                              fingerprint: true
+
+            echo "Validation output archived."
         }
 
-        // Log a success message when all validations pass.
+        // Success notification.
         success {
-            echo '✅ All validations passed!'
+            echo '✅ All data quality validations passed successfully!'
         }
 
-        // Log a failure message and optionally send an extra Slack alert
-        // using the Jenkins Slack plugin (must be installed separately).
+        // Failure notification.
         failure {
-            echo '❌ Validation issues found!'
-            // Uncomment the line below if Jenkins Slack plugin is installed:
-            // slackSend channel: '#data-quality', color: 'danger', message: "❌ Data Quality Pipeline FAILED — Build #${env.BUILD_NUMBER}"
+            echo '❌ Data quality validation failed!'
+
+            // Optional Slack notification via Jenkins Slack Plugin:
+            // slackSend channel: '#data-quality',
+            //           color: 'danger',
+            //           message: "❌ Data Quality Pipeline FAILED — Build #${env.BUILD_NUMBER}"
+        }
+
+        // Always cleanup virtual environment to keep Jenkins workspace clean.
+        cleanup {
+            sh '''
+                echo "Cleaning up virtual environment..."
+                rm -rf $VENV || true
+            '''
         }
     }
 }
