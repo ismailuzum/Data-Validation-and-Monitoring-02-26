@@ -1,40 +1,40 @@
 # Data Validation & Monitoring
 
-Amazon Sales verisi üzerinde **Great Expectations** ve **Pydantic** ile data quality doğrulama pipeline'ı.  
-Hata tespitlerinde **Slack** bildirimi gönderir. **GitHub Actions** ile otomatik çalışır.
+A data quality validation pipeline for the Amazon Sales dataset using **Great Expectations** and **Pydantic**.  
+Sends **Slack** notifications on validation results and runs automatically via **GitHub Actions**.
 
 ---
 
-## 📁 Proje Yapısı
+## 📁 Project Structure
 
 ```
 Data-Validation-and-Monitoring-02-26/
 ├── .github/workflows/
 │   └── data_quality.yml         # CI/CD – GitHub Actions workflow
 ├── data/
-│   └── amazon_sales.csv         # Amazon sipariş verisi
+│   └── amazon_sales.csv         # Amazon orders dataset
 ├── src/
-│   ├── ge_validation.py         # Great Expectations validation modülü
-│   ├── pydantic_validation.py   # Pydantic satır-bazlı doğrulama
-│   └── slack_notifier.py        # Slack bildirim modülü
-├── dq_pipeline.py               # Pipeline orkestrasyonu
-├── requirements.txt             # Python bağımlılıkları
+│   ├── ge_validation.py         # Great Expectations validation module
+│   ├── pydantic_validation.py   # Pydantic row-level validation
+│   └── slack_notifier.py        # Slack notification module
+├── dq_pipeline.py               # Pipeline orchestrator
+├── requirements.txt             # Python dependencies
 └── README.md
 ```
 
 ---
 
-## 🚀 Kurulum & Çalıştırma
+## 🚀 Setup & Usage
 
 ```bash
-# Bağımlılıkları yükle
+# Install dependencies
 pip install -r requirements.txt
 
-# Pipeline'ı çalıştır
+# Run the pipeline
 python dq_pipeline.py
 ```
 
-### Slack Bildirimi (opsiyonel)
+### Slack Notification (optional)
 
 ```bash
 export SLACK_WEBHOOK_URL="https://hooks.slack.com/services/XXX/YYY/ZZZ"
@@ -43,50 +43,49 @@ python dq_pipeline.py
 
 ---
 
-## 🔍 Doğrulama Kuralları
+## 🔍 Validation Rules
 
 ### Great Expectations (GE)
 
-| #  | Expectation                  | Kolon          | Açıklama                    |
+| #  | Expectation                  | Column         | Description                 |
 |----|------------------------------|----------------|-----------------------------|
-| 1  | Not Null                     | Order ID       | Boş olamaz                  |
-| 2  | Unique                       | Order ID       | Tekrar edemez               |
-| 3  | Value Between (≥ 0)          | Qty            | Negatif olamaz              |
-| 4  | Value Between (≥ 0)          | Amount         | Negatif olamaz              |
-| 5  | Value In Set                 | Status         | Geçerli sipariş durumları   |
-| 6  | Value In Set                 | Fulfilment     | Merchant veya Amazon        |
-| 7  | Value In Set                 | currency       | Sadece INR                  |
-| 8  | Value In Set                 | ship-country   | Sadece IN                   |
-| 9  | Match Regex (`MM-DD-YY`)     | Date           | Tarih formatı kontrolü      |
+| 1  | Not Null                     | Order ID       | Must not be empty           |
+| 2  | Unique                       | Order ID       | Must not repeat             |
+| 3  | Value Between (≥ 0)          | Qty            | Cannot be negative          |
+| 4  | Value Between (≥ 0)          | Amount         | Cannot be negative          |
+| 5  | Value In Set                 | Status         | Valid order statuses only   |
+| 6  | Value In Set                 | Fulfilment     | Merchant or Amazon          |
+| 7  | Value In Set                 | currency       | INR only                    |
+| 8  | Value In Set                 | ship-country   | IN only                     |
+| 9  | Match Regex (`MM-DD-YY`)     | Date           | Date format check           |
 
 ### Pydantic
 
-`AmazonOrder` modeli ile her satır ayrı doğrulanır. Field validatörleri:
-- `order_id` → boş olamaz  
+Each row is validated individually using the `AmazonOrder` model with field validators:
+- `order_id` → must not be empty  
 - `date` → `MM-DD-YY` regex  
-- `status`, `fulfilment`, `currency`, `ship_country` → set kontrolü  
+- `status`, `fulfilment`, `currency`, `ship_country` → set membership check  
 - `qty` → ≥ 0  
-- `amount` → ≥ 0 (opsiyonel)
+- `amount` → ≥ 0 (optional, may be None for cancelled orders)
 
 ---
 
 ## ⚙️ GitHub Actions
 
-Workflow (`.github/workflows/data_quality.yml`):
+Workflow file: `.github/workflows/data_quality.yml`
 
-- **Tetikleyiciler:** `push`, `pull_request` (main), `workflow_dispatch`
-- **Python 3.11** ortamı kurulur
-- `dq_pipeline.py` çalıştırılır
-- Slack webhook URL'si **GitHub Secret** olarak tanımlanmalıdır:  
-  `Settings → Secrets → SLACK_WEBHOOK_URL`
+- **Triggers:** `push`, `pull_request` (main branch), `workflow_dispatch` (manual)
+- **Environment:** Python 3.11
+- **Steps:** Install dependencies → Run `dq_pipeline.py`
+- **Slack Secret:** Add `SLACK_WEBHOOK_URL` under `Settings → Secrets and variables → Actions`
 
 ---
 
-## 📤 Slack Bildirimi
+## 📤 Slack Notification
 
-Pipeline sonucunda Slack'e **Block Kit** formatında mesaj gönderilir:
+The pipeline sends a **Block Kit** formatted message to Slack containing:
 
-- ✅ / ❌ genel durum
-- GE passed/failed sayıları
-- Pydantic valid/invalid satır sayıları
-- Hata detayları (sample)
+- ✅ / ❌ Overall status
+- GE passed/failed expectation counts
+- Pydantic valid/invalid row counts
+- Sample error details
