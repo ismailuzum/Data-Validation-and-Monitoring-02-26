@@ -21,7 +21,7 @@ from src.pydantic_validation import run_pydantic_validation
 from src.slack_notifier import send_slack_notification
 
 # ── Load .env file ───────────────────────────────────────────────────────────
-load_dotenv()
+load_dotenv() # loaded env
 
 # ── Settings ─────────────────────────────────────────────────────────────────
 
